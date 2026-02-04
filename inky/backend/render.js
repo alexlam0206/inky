@@ -4,6 +4,9 @@ const sharp = require('sharp');
 let lastRenderHash = null;
 let lastRenderBuffer = null;
 
+let weatherCache = null;
+let lastWeatherFetch = 0;
+
 function getSnapshotDate(data) {
   if (data && typeof data.snapshotDate === 'string' && data.snapshotDate.trim()) {
     return data.snapshotDate.trim();
@@ -31,15 +34,23 @@ function hashData(data) {
 }
 
 async function getWeather() {
+  const now = Date.now();
+  if (weatherCache && (now - lastWeatherFetch < 5 * 60 * 1000)) {
+    return weatherCache;
+  }
+
   try {
     const lat = 22.3193; // hong kong
     const lon = 114.1694;
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code`;
     const res = await fetch(url);
     const json = await res.json();
-    return json.current;
+    
+    weatherCache = json.current;
+    lastWeatherFetch = now;
+    return weatherCache;
   } catch (e) {
-    return null;
+    return weatherCache; // return stale if fetch fails
   }
 }
 
@@ -65,8 +76,11 @@ async function renderDashboard(data) {
 
   const snapshotDate = getSnapshotDate(data);
   const baseDateISO = getBaseDateISO(data, snapshotDate);
-  const tasks = (data.tasks || []).slice(0, 5);
-  const tasksCount = Math.max(tasks.length, 1);
+  const allTasks = data.tasks || [];
+  const leftTasks = allTasks.slice(0, 5);
+  const rightTasks = allTasks.slice(5, 10);
+  
+  const tasksCount = Math.max(leftTasks.length, 1);
   const dividerY = 160 + tasksCount * lineGap + 10;
   const habitsTitleY = 220 + tasksCount * lineGap;
 
@@ -84,7 +98,7 @@ async function renderDashboard(data) {
       <!-- Weather -->
       ${weather ? `
       <text x="${width - left}" y="55" font-family="sans-serif" font-size="${titleSize}" font-weight="700" fill="black" text-anchor="end">
-        ${weather.temperature_2m}°C
+        Now: ${weather.temperature_2m}°C
       </text>
       ` : ''}
 
@@ -93,9 +107,18 @@ async function renderDashboard(data) {
 
       <!-- Tasks -->
       <text x="${left}" y="120" font-family="sans-serif" font-size="${sectionSize}" font-weight="700" fill="black">Upcoming Tasks</text>
-      ${tasks.map((task, i) => `
+      
+      <!-- Left Column -->
+      ${leftTasks.map((task, i) => `
         <text x="${left}" y="${160 + i * lineGap}" font-family="sans-serif" font-size="${itemSize}" font-weight="600" fill="black">
-          - ${task.title} (Due: ${task.dueDate})
+          • ${task.title.length > 25 ? task.title.substring(0, 22) + '...' : task.title}
+        </text>
+      `).join('')}
+
+      <!-- Right Column -->
+      ${rightTasks.map((task, i) => `
+        <text x="${width / 2 + 20}" y="${160 + i * lineGap}" font-family="sans-serif" font-size="${itemSize}" font-weight="600" fill="black">
+          • ${task.title.length > 25 ? task.title.substring(0, 22) + '...' : task.title}
         </text>
       `).join('')}
 
