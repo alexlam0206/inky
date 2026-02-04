@@ -40,6 +40,11 @@ function App() {
     setDueDate('');
   };
 
+  const handleDeleteTask = (index) => {
+    const updatedTasks = (data.tasks || []).filter((_, i) => i !== index);
+    saveData({ ...data, tasks: updatedTasks });
+  };
+
   const handleStudyDone = () => {
     const today = getTodayDate();
     const currentHabits = data.habits || {};
@@ -65,6 +70,7 @@ function App() {
         {(data.tasks || []).map((task, i) => (
           <li key={i}>
             {task.title} (Due: {task.dueDate})
+            <button onClick={() => handleDeleteTask(i)}>Delete</button>
           </li>
         ))}
       </ul>
