@@ -9,13 +9,12 @@ function getSnapshotDate(data) {
     return data.snapshotDate.trim();
   }
 
-  const studyDates = data?.habits?.study || [];
-  if (studyDates.length > 0) {
-    const latest = studyDates.slice().sort().pop();
-    return latest;
-  }
-
-  return 'Date: (set in data)';
+  // fallback to system date if not in data
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function getBaseDateISO(data, snapshotDate) {
@@ -23,12 +22,7 @@ function getBaseDateISO(data, snapshotDate) {
     return snapshotDate;
   }
 
-  const studyDates = data?.habits?.study || [];
-  if (studyDates.length > 0) {
-    return studyDates.slice().sort().pop();
-  }
-
-  return '2000-01-01';
+  return new Date().toISOString().split('T')[0];
 }
 
 function hashData(data) {
@@ -36,13 +30,27 @@ function hashData(data) {
   return crypto.createHash('sha256').update(payload).digest('hex');
 }
 
+async function getWeather() {
+  try {
+    const lat = 22.3193; // hong kong
+    const lon = 114.1694;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code`;
+    const res = await fetch(url);
+    const json = await res.json();
+    return json.current;
+  } catch (e) {
+    return null;
+  }
+}
+
 async function renderDashboard(data) {
-  // E-ink safety: only change pixels when the data snapshot changes.
+  // protect eink, only render when data chang
   const dataHash = hashData(data);
   if (dataHash === lastRenderHash && lastRenderBuffer) {
     return lastRenderBuffer;
   }
 
+  const weather = await getWeather();
   const width = 800;
   const height = 600;
   const left = 50;
@@ -62,7 +70,7 @@ async function renderDashboard(data) {
   const dividerY = 160 + tasksCount * lineGap + 10;
   const habitsTitleY = 220 + tasksCount * lineGap;
 
-  // Generate SVG content
+  // SVG  content
   let svgContent = `
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
       <!-- Background -->
@@ -72,6 +80,13 @@ async function renderDashboard(data) {
       <text x="${left}" y="55" font-family="sans-serif" font-size="${titleSize}" font-weight="700" fill="black">
         ${snapshotDate.startsWith('Date:') ? snapshotDate : `Date: ${snapshotDate}`}
       </text>
+
+      <!-- Weather -->
+      ${weather ? `
+      <text x="${width - left}" y="55" font-family="sans-serif" font-size="${titleSize}" font-weight="700" fill="black" text-anchor="end">
+        ${weather.temperature_2m}°C
+      </text>
+      ` : ''}
 
       <!-- Divider -->
       <rect x="${left}" y="75" width="${dividerWidth}" height="${dividerHeight}" fill="black"/>

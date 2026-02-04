@@ -12,11 +12,18 @@ function App() {
   const [data, setData] = useState({ tasks: [], habits: { study: [] } });
   const [title, setTitle] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [weather, setWeather] = useState(null);
 
   useEffect(() => {
     fetch('/data')
       .then(res => res.json())
       .then(setData)
+      .catch(console.error);
+
+    // fetch weather from open meteo
+    fetch('https://api.open-meteo.com/v1/forecast?latitude=22.3193&longitude=114.1694&current=temperature_2m')
+      .then(res => res.json())
+      .then(json => setWeather(json.current))
       .catch(console.error);
   }, []);
  
@@ -65,6 +72,7 @@ function App() {
 
   return (
     <div>
+      {weather && <p>Current Temp: {weather.temperature_2m}°C</p>}
       <h1>Task List</h1>
       <ul>
         {(data.tasks || []).map((task, i) => (
