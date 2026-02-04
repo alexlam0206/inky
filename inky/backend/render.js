@@ -1,6 +1,48 @@
+const crypto = require('crypto');
 const sharp = require('sharp');
 
+let lastRenderHash = null;
+let lastRenderBuffer = null;
+
+function getSnapshotDate(data) {
+  if (data && typeof data.snapshotDate === 'string' && data.snapshotDate.trim()) {
+    return data.snapshotDate.trim();
+  }
+
+  const studyDates = data?.habits?.study || [];
+  if (studyDates.length > 0) {
+    const latest = studyDates.slice().sort().pop();
+    return latest;
+  }
+
+  return 'Date: (set in data)';
+}
+
+function getBaseDateISO(data, snapshotDate) {
+  if (snapshotDate && /^\d{4}-\d{2}-\d{2}$/.test(snapshotDate)) {
+    return snapshotDate;
+  }
+
+  const studyDates = data?.habits?.study || [];
+  if (studyDates.length > 0) {
+    return studyDates.slice().sort().pop();
+  }
+
+  return '2000-01-01';
+}
+
+function hashData(data) {
+  const payload = JSON.stringify(data ?? {});
+  return crypto.createHash('sha256').update(payload).digest('hex');
+}
+
 async function renderDashboard(data) {
+  // E-ink safety: only change pixels when the data snapshot changes.
+  const dataHash = hashData(data);
+  if (dataHash === lastRenderHash && lastRenderBuffer) {
+    return lastRenderBuffer;
+  }
+
   const width = 800;
   const height = 600;
   const left = 50;
@@ -13,6 +55,8 @@ async function renderDashboard(data) {
   const dividerHeight = 6;
   const dividerWidth = width - left * 2;
 
+  const snapshotDate = getSnapshotDate(data);
+  const baseDateISO = getBaseDateISO(data, snapshotDate);
   const tasks = (data.tasks || []).slice(0, 5);
   const tasksCount = Math.max(tasks.length, 1);
   const dividerY = 160 + tasksCount * lineGap + 10;
@@ -24,9 +68,9 @@ async function renderDashboard(data) {
       <!-- Background -->
       <rect width="100%" height="100%" fill="white"/>
 
-      <!-- Date -->
+      <!-- Date (date only, from data snapshot) -->
       <text x="${left}" y="55" font-family="sans-serif" font-size="${titleSize}" font-weight="700" fill="black">
-        Date: ${new Date().toLocaleDateString()}
+        ${snapshotDate.startsWith('Date:') ? snapshotDate : `Date: ${snapshotDate}`}
       </text>
 
       <!-- Divider -->
@@ -51,11 +95,12 @@ async function renderDashboard(data) {
   const gap = 12;
   const studyDates = data.habits?.study || [];
 
+  const baseDate = new Date(`${baseDateISO}T00:00:00Z`);
   for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
+    const d = new Date(baseDate);
+    d.setUTCDate(d.getUTCDate() - i);
     const dateStr = d.toISOString().split('T')[0];
-    const dayLabel = d.getDate();
+    const dayLabel = d.getUTCDate();
     const isDone = studyDates.includes(dateStr);
 
     const x = left + (6 - i) * (squareSize + gap);
@@ -71,9 +116,14 @@ async function renderDashboard(data) {
   svgContent += `</svg>`;
 
   // Convert SVG to PNG using sharp
-  return sharp(Buffer.from(svgContent))
+  const buffer = await sharp(Buffer.from(svgContent))
     .png()
     .toBuffer();
+
+  lastRenderHash = dataHash;
+  lastRenderBuffer = buffer;
+
+  return buffer;
 }
 
 module.exports = { renderDashboard };
