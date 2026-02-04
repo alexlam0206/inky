@@ -1,55 +1,79 @@
-const express = require('canvas');
+const sharp = require('sharp');
 
+async function renderDashboard(data) {
+  const width = 800;
+  const height = 600;
+  const left = 50;
 
-function renderDashboard(data) {
-    const canvas = new Canvas(800, 600);
-    const ctx = canvas.getContext('2d');
-    
-    // bg
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, 800, 600);
+  const titleSize = 30;
+  const sectionSize = 26;
+  const itemSize = 22;
+  const lineGap = 38;
 
-    //date
-    ctx.font = 'bold 30px sans-serif';
-    const today = new Date().toLocaleDateString();
-    ctx.fillText(today, 20, 50);
+  const dividerHeight = 6;
+  const dividerWidth = width - left * 2;
 
-    //task
-    ctx.font = '24px sans-serif';
-    ctx.fillText('Upcoming Tasks:', 50, 100);
-    ctx.font = '20px sans-serif';
-    (data.tasks || []).slice(0, 5).forEach((task, i) => {
-         ctx.fillText(`- ${task.title} (Due: ${task.dueDate})`, 50, 140 + i * 30);
-    });
+  const tasks = (data.tasks || []).slice(0, 5);
+  const tasksCount = Math.max(tasks.length, 1);
+  const dividerY = 160 + tasksCount * lineGap + 10;
+  const habitsTitleY = 220 + tasksCount * lineGap;
 
-    // habit graph (7days)
-    ctx.font = '24px sans-serif';
-    ctx.fillText('Study Habit (Last 7 days):', 50, 350);
+  // Generate SVG content
+  let svgContent = `
+    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      <!-- Background -->
+      <rect width="100%" height="100%" fill="white"/>
 
-    const squareSize = 40;
-    const gap = 10;
-    const studyDates = data.habits?.study || [];
+      <!-- Date -->
+      <text x="${left}" y="55" font-family="sans-serif" font-size="${titleSize}" font-weight="700" fill="black">
+        Date: ${new Date().toLocaleDateString()}
+      </text>
 
-    for (let i = 6; i >= 0; i--) {
+      <!-- Divider -->
+      <rect x="${left}" y="75" width="${dividerWidth}" height="${dividerHeight}" fill="black"/>
+
+      <!-- Tasks -->
+      <text x="${left}" y="120" font-family="sans-serif" font-size="${sectionSize}" font-weight="700" fill="black">Upcoming Tasks</text>
+      ${tasks.map((task, i) => `
+        <text x="${left}" y="${160 + i * lineGap}" font-family="sans-serif" font-size="${itemSize}" font-weight="600" fill="black">
+          - ${task.title} (Due: ${task.dueDate})
+        </text>
+      `).join('')}
+
+      <!-- Divider -->
+      <rect x="${left}" y="${dividerY}" width="${dividerWidth}" height="${dividerHeight}" fill="black"/>
+
+      <!-- Habit Heatmap -->
+      <text x="${left}" y="${habitsTitleY}" font-family="sans-serif" font-size="${sectionSize}" font-weight="700" fill="black">Study Habit (Last 7 Days)</text>
+  `;
+
+  const squareSize = 44;
+  const gap = 12;
+  const studyDates = data.habits?.study || [];
+
+  for (let i = 6; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
     const dateStr = d.toISOString().split('T')[0];
+    const dayLabel = d.getDate();
     const isDone = studyDates.includes(dateStr);
 
-    const x = 50 + (6 - i) * (squareSize + gap);
-    const y = 380;
+    const x = left + (6 - i) * (squareSize + gap);
+    const y = 280 + tasksCount * lineGap;
 
-    ctx.strokeStyle = '#000000';
-    ctx.strokeRect(x, y, squareSize, squareSize);
-    
-    if (isDone) {
-      ctx.fillRect(x, y, squareSize, squareSize);
-    }
-    
-    // day label
-    ctx.font = '12px sans-serif';
-    ctx.fillText(d.getDate().toString(), x + 10, y + squareSize + 15);
+    // Square outline (thick enough for e-ink)
+    svgContent += `<rect x="${x}" y="${y}" width="${squareSize}" height="${squareSize}" fill="${isDone ? 'black' : 'white'}" stroke="black" stroke-width="2"/>`;
+
+    // Day label
+    svgContent += `<text x="${x + 14}" y="${y + squareSize + 22}" font-family="sans-serif" font-size="14" font-weight="700" fill="black">${dayLabel}</text>`;
   }
 
-  return canvas.toBuffer('image/png');
+  svgContent += `</svg>`;
+
+  // Convert SVG to PNG using sharp
+  return sharp(Buffer.from(svgContent))
+    .png()
+    .toBuffer();
 }
+
+module.exports = { renderDashboard };
